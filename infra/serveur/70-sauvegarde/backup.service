@@ -1,0 +1,11 @@
+[Unit]
+Description=Sauvegarde chiffree de GLPI
+After=mariadb.service
+
+[Service]
+Type=oneshot
+Environment=ENV_FILE=/etc/glpi-lab/.env
+ExecStart=/opt/glpi-lab/infra/serveur/70-sauvegarde/backup-glpi.sh
+# Le script lit la passphrase depuis .env : le service ne doit pas exposer
+# son environnement dans le journal systemd.
+UMask=0077
