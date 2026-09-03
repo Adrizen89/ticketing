@@ -1,0 +1,50 @@
+# Collecte de métriques — issue #29
+# Déposé dans /etc/prometheus/prometheus.yml
+#
+# Prometheus et ses sondes n'écoutent que sur la boucle locale : seul Grafana
+# les interroge, et Grafana lui-même n'est joignable que par le tunnel.
+
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+  external_labels:
+    lab: glpi
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['127.0.0.1:9093']
+
+scrape_configs:
+  # Métriques système : processeur, mémoire, disque, réseau — issue #29.
+  - job_name: node
+    static_configs:
+      - targets: ['127.0.0.1:9100']
+        labels: { instance: serveur-glpi }
+
+  # Disponibilité et temps de réponse de GLPI, vus depuis le tunnel.
+  - job_name: glpi-disponibilite
+    metrics_path: /probe
+    params:
+      module: [https_2xx]
+    static_configs:
+      - targets: ['https://localhost/index.php']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 127.0.0.1:9115
+
+  # État de la base de données.
+  - job_name: mariadb
+    static_configs:
+      - targets: ['127.0.0.1:9104']
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ['127.0.0.1:9090']
