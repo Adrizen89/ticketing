@@ -29,11 +29,20 @@ backups/
 *.tar.gz
 *.tar.zst
 
+# Artefacts régénérables
+infra/donnees-fictives/mails-demo/*.eml
+infra/scripts/tests-securite/preuves/
+preuves/
+
 # Journaux et artefacts d'exécution
 *.log
 logs/
 tmp/
 *.pid
+
+# Python
+__pycache__/
+*.pyc
 
 # Systèmes
 .DS_Store
