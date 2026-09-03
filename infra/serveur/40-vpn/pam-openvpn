@@ -1,0 +1,16 @@
+# Second facteur TOTP pour OpenVPN — issue #17
+# Déposé dans /etc/pam.d/openvpn
+#
+# L'utilisateur saisit son identifiant système et, comme mot de passe, le code
+# à six chiffres de son application d'authentification. Le mot de passe système
+# n'est PAS demandé : le premier facteur est le certificat client, le second est
+# le code à usage unique.
+#
+# secret= place les secrets hors du répertoire personnel des utilisateurs, qui
+# n'ont donc aucun moyen de lire ou d'altérer leur propre secret.
+# no_increment_hotp et nullok volontairement absents : un utilisateur sans
+# secret enrôlé se voit refuser la connexion plutôt que laissé passer.
+
+auth    required   pam_google_authenticator.so secret=/etc/openvpn/otp/${USER}/.google_authenticator user=root
+auth    required   pam_permit.so
+account required   pam_permit.so
