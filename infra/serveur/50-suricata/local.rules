@@ -1,0 +1,114 @@
+# =============================================================================
+# Règles Suricata adaptées au lab — issue #27
+# -----------------------------------------------------------------------------
+# Schéma d'architecture : « Règles adaptées GLPI / VPN / SMTP / SSH ».
+# Ces règles complètent les jeux communautaires, elles ne les remplacent pas.
+#
+# Plage d'identifiants locale : 1000000-1999999 (réservée aux règles maison).
+# « drop » = blocage effectif, possible parce que Suricata tourne en mode IPS
+# derrière une file nftables. « alert » = observation seule, pour les règles
+# encore en cours de réglage.
+# =============================================================================
+
+# --- GLPI : application web ---------------------------------------------------
+
+# Tentative d'accès à l'assistant d'installation. Après l'issue #10 le
+# répertoire n'existe plus : toute requête est une reconnaissance.
+drop http any any -> $HOME_NET any ( \
+    msg:"LAB GLPI acces a install.php - reconnaissance"; \
+    flow:to_server,established; \
+    http.uri; content:"/install/"; nocase; \
+    classtype:web-application-attack; sid:1000001; rev:1; )
+
+# Tentative de lecture directe des fichiers de configuration.
+drop http any any -> $HOME_NET any ( \
+    msg:"LAB GLPI acces direct a config_db.php"; \
+    flow:to_server,established; \
+    http.uri; content:"config_db.php"; nocase; \
+    classtype:web-application-attack; sid:1000002; rev:1; )
+
+# Traversée de répertoire.
+drop http any any -> $HOME_NET any ( \
+    msg:"LAB GLPI traversee de repertoire"; \
+    flow:to_server,established; \
+    http.uri; pcre:"/(\.\.[\/\\]){2,}/"; \
+    classtype:web-application-attack; sid:1000003; rev:1; )
+
+# Injection SQL sur les paramètres de recherche de GLPI.
+drop http any any -> $HOME_NET any ( \
+    msg:"LAB GLPI tentative d injection SQL"; \
+    flow:to_server,established; \
+    http.uri; pcre:"/(union\s+select|or\s+1\s*=\s*1|sleep\s*\(|benchmark\s*\()/i"; \
+    classtype:web-application-attack; sid:1000004; rev:1; )
+
+# Dépôt d'un fichier à extension exécutable — complète le contrôle applicatif
+# de l'issue #10, en amont de l'application.
+drop http any any -> $HOME_NET any ( \
+    msg:"LAB GLPI depot de fichier a extension executable"; \
+    flow:to_server,established; \
+    http.request_body; pcre:"/filename=\"[^\"]+\.(php[0-9]?|phtml|phar|jsp|asp|aspx|sh|cgi|pl)\"/i"; \
+    classtype:web-application-attack; sid:1000005; rev:1; )
+
+# Bourrage d'identifiants sur la page de connexion : plus de 10 POST par minute
+# depuis une même source. Complémentaire de Fail2ban (issue #31), qui agit sur
+# les journaux ; ici l'action est immédiate, au niveau paquet.
+alert http any any -> $HOME_NET any ( \
+    msg:"LAB GLPI rafale d authentifications - suspicion de force brute"; \
+    flow:to_server,established; \
+    http.method; content:"POST"; \
+    http.uri; content:"/front/login.php"; nocase; \
+    threshold:type threshold, track by_src, count 10, seconds 60; \
+    classtype:attempted-recon; sid:1000006; rev:1; )
+
+# Balayage d'outils de découverte web connus.
+drop http any any -> $HOME_NET any ( \
+    msg:"LAB scanner web detecte par son en-tete User-Agent"; \
+    flow:to_server,established; \
+    http.user_agent; pcre:"/(nikto|sqlmap|nmap|masscan|dirbuster|gobuster|wpscan|nuclei)/i"; \
+    classtype:web-application-attack; sid:1000007; rev:1; )
+
+# --- SSH ----------------------------------------------------------------------
+
+# Rafale de connexions SSH. SSH n'est joignable que par le tunnel (issue #19) :
+# une rafale signifie qu'un poste du tunnel est compromis.
+alert ssh any any -> $HOME_NET 22 ( \
+    msg:"LAB SSH rafale de connexions depuis le tunnel"; \
+    flow:to_server; \
+    threshold:type threshold, track by_src, count 5, seconds 60; \
+    classtype:attempted-admin; sid:1000010; rev:1; )
+
+# --- VPN ----------------------------------------------------------------------
+
+# Volume anormal de tentatives d'établissement de tunnel.
+alert udp any any -> $HOME_NET 1194 ( \
+    msg:"LAB VPN volume anormal de tentatives de connexion"; \
+    threshold:type threshold, track by_src, count 30, seconds 60; \
+    classtype:attempted-dos; sid:1000020; rev:1; )
+
+# --- SMTP et IMAP -------------------------------------------------------------
+
+# Le collecteur de mails (issue #23) est une porte d'entrée : un message piégé
+# peut arriver par là. Détection de pièce jointe exécutable.
+alert smtp any any -> any any ( \
+    msg:"LAB SMTP piece jointe a extension executable"; \
+    flow:established; \
+    content:"Content-Disposition"; nocase; \
+    pcre:"/filename=\"?[^\"\r\n]+\.(exe|scr|bat|cmd|js|vbs|jar|ps1)\"?/i"; \
+    classtype:suspicious-filename-detect; sid:1000030; rev:1; )
+
+# Le serveur ne doit jamais parler SMTP en clair : les identifiants
+# transiteraient sans chiffrement. CDC §3.3.
+alert tcp $HOME_NET any -> any 25 ( \
+    msg:"LAB SMTP en clair sortant - contraire a la matrice des flux"; \
+    flow:to_server,established; \
+    classtype:policy-violation; sid:1000031; rev:1; )
+
+# --- Politique ---------------------------------------------------------------
+
+# Toute sortie vers un port non prévu par la matrice des flux est une anomalie :
+# c'est le signal typique d'un canal de commande et contrôle.
+alert tcp $HOME_NET any -> !$HOME_NET ![53,80,123,443,587,993] ( \
+    msg:"LAB sortie vers un port hors matrice des flux"; \
+    flow:to_server,established; \
+    threshold:type limit, track by_src, count 1, seconds 300; \
+    classtype:policy-violation; sid:1000040; rev:1; )
