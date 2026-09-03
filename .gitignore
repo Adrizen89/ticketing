@@ -1,0 +1,42 @@
+# Secrets et fichiers d'environnement — CDC §3.5 : aucun secret dans le dépôt
+.env
+.env.*
+!.env.example
+*.env
+secrets/
+infra/**/*.local
+
+# Matériel cryptographique
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.csr
+*.gpg
+easy-rsa/pki/
+infra/serveur/40-vpn/pki/
+infra/client/*.ovpn
+infra/client/*.conf.local
+ta.key
+tls-crypt.key
+
+# Sauvegardes et dumps
+*.sql
+*.sql.gz
+*.dump
+backups/
+*.tar.gz
+*.tar.zst
+
+# Journaux et artefacts d'exécution
+*.log
+logs/
+tmp/
+*.pid
+
+# Systèmes
+.DS_Store
+Thumbs.db
+*.swp
+*~
