@@ -1,0 +1,11 @@
+[Unit]
+Description=Déclenchement périodique des actions automatiques GLPI
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
