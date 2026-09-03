@@ -1,0 +1,44 @@
+# =============================================================================
+# Durcissement MariaDB pour GLPI — issue #8
+# Déposé dans /etc/mysql/mariadb.conf.d/99-glpi.cnf
+# -----------------------------------------------------------------------------
+# Schéma d'architecture : « Base de données — Accès restreint ».
+# La base ne doit jamais être joignable depuis le réseau, y compris depuis le
+# tunnel VPN. Seul le serveur web local s'y connecte.
+# =============================================================================
+
+[mysqld]
+# --- Cloisonnement réseau ----------------------------------------------------
+# Écoute sur la boucle locale uniquement. C'est la mesure structurante :
+# le pare-feu n'a même pas à filtrer le port 3306, il n'est pas exposé.
+bind-address = 127.0.0.1
+skip-networking = 0
+skip-name-resolve = 1
+
+# --- Réduction de surface ----------------------------------------------------
+# Interdit LOAD DATA LOCAL INFILE : vecteur de lecture de fichiers du serveur
+# depuis une injection SQL réussie.
+local-infile = 0
+# Interdit l'écriture de fichiers par SELECT ... INTO OUTFILE.
+secure-file-priv = /var/lib/mysql-files
+symbolic-links = 0
+
+# --- Jeu de caractères imposé par GLPI 10 ------------------------------------
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+
+# --- Journalisation — CDC §3.4 -----------------------------------------------
+log_error = /var/log/mysql/error.log
+log_warnings = 2
+# Requêtes lentes : utile au diagnostic, et un pic de requêtes lentes est un
+# signal d'injection ou d'abus.
+slow_query_log = 1
+slow_query_log_file = /var/log/mysql/slow.log
+long_query_time = 2
+
+# --- Dimensionnement pour un serveur à 4 Go de RAM ---------------------------
+innodb_buffer_pool_size = 1G
+innodb_log_file_size = 256M
+innodb_file_per_table = 1
+innodb_flush_log_at_trx_commit = 1
+max_connections = 100
