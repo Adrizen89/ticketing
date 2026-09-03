@@ -87,9 +87,14 @@ infra/
 │   ├── 60-supervision/           Fail2ban, Prometheus, Grafana         (#29, #30, #31)
 │   └── 70-sauvegarde/            Sauvegarde chiffrée et restauration   (#6, #14)
 ├── client/                       VPN, agent d'inventaire, VNC          (#3, #20, #25)
+├── donnees-fictives/             Jeu fictif : comptes, tickets, mails  (#32)
+│   ├── donnees.py                Le jeu de données (identités inventées)
+│   ├── seed-glpi.py              Peuplement via l'API REST, idempotent
+│   └── generer-mails.py          Mails de démonstration du collecteur (#23)
 └── scripts/
     ├── lib/common.sh             Bibliothèque commune
-    └── scan-preuve.sh            Preuve de cloisonnement               (#33)
+    ├── scan-preuve.sh            Preuve de cloisonnement — scénario 1  (#33)
+    └── tests-securite/           Scénarios 2, 3, 4 avec preuve          (#33)
 ```
 
 ## Choix techniques à justifier en soutenance
