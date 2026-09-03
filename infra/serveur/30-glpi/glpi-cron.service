@@ -1,0 +1,23 @@
+# Actions automatiques de GLPI en mode CLI — issue #26.
+# En mode web, elles ne se déclenchent qu'au passage d'un utilisateur : le
+# collecteur de mails et les notifications seraient donc irréguliers.
+[Unit]
+Description=Actions automatiques GLPI
+After=network.target mariadb.service
+Requires=mariadb.service
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+ExecStart=/usr/bin/php /var/www/glpi/front/cron.php
+# Durcissement de l'unité : le processus n'a accès qu'à ce dont il a besoin.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/glpi /var/log/glpi
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
