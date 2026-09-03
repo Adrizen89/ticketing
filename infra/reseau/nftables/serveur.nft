@@ -1,0 +1,90 @@
+#!/usr/sbin/nft -f
+# =============================================================================
+# Pare-feu du serveur GLPI — issue #18
+# -----------------------------------------------------------------------------
+# Cahier de recettes : « N'autoriser que le tunnel du VPN en entrée pour passer. »
+# Politique par défaut « drop » en entrée, en transfert et en sortie.
+# Chaque règle correspond à une ligne de infra/reseau/matrice-flux.md.
+#
+# Les valeurs @VAR@ sont substituées à l'installation par install-nftables.sh
+# à partir de infra/.env. Ne pas éditer le fichier généré dans /etc/nftables.conf,
+# éditer ce modèle et relancer le script.
+# =============================================================================
+
+flush ruleset
+
+define LAN_IF   = "@LAN_IF@"
+define VPN_IF   = "tun0"
+define VPN_NET  = @VPN_CIDR@
+define VPN_PORT = @VPN_PORT@
+define SSH_PORT = @SSH_PORT@
+
+table inet filter {
+
+
+    chain input {
+        type filter hook input priority filter; policy drop;
+
+        # Retours de connexions déjà autorisées.
+        ct state established,related accept
+        ct state invalid drop
+
+        # Boucle locale : MariaDB, Prometheus et les sondes locales en dépendent.
+        iif lo accept
+
+        # ICMP limité : nécessaire à la découverte de MTU, sans en faire un canal.
+        ip protocol icmp icmp type { echo-request, destination-unreachable, time-exceeded } limit rate 5/second accept
+        ip6 nexthdr ipv6-icmp accept
+
+        # E1 — SEULE entrée depuis l'extérieur : établissement du tunnel VPN.
+        iifname $LAN_IF udp dport $VPN_PORT accept comment "E1 VPN"
+
+        # E2, E3, E4 — services applicatifs, joignables uniquement par le tunnel.
+        iifname $VPN_IF ip saddr $VPN_NET tcp dport 443  accept comment "E2 GLPI HTTPS"
+        iifname $VPN_IF ip saddr $VPN_NET tcp dport 80   accept comment "E2 redirection vers HTTPS"
+        iifname $VPN_IF ip saddr $VPN_NET tcp dport $SSH_PORT accept comment "E3 SSH admin"
+        iifname $VPN_IF ip saddr $VPN_NET tcp dport 3000 accept comment "E4 Grafana"
+
+        # Tout le reste est rejeté et tracé. La limite de débit empêche qu'un
+        # balayage ne sature les journaux — CDC §3.4.
+        limit rate 10/minute burst 20 packets log prefix "[nft-drop-in] " level warn
+        counter
+    }
+
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+        # Le serveur ne route pas : le client n'atteint que le serveur lui-même.
+        # Aucune règle. Toute tentative de rebond via le tunnel est bloquée ici.
+        limit rate 5/minute log prefix "[nft-drop-fwd] " level warn
+        counter
+    }
+
+    chain output {
+        type filter hook output priority filter; policy drop;
+
+        ct state established,related accept
+        oif lo accept
+
+        # S2, S3 — NTP et DNS.
+        udp dport { 53, 123 } accept comment "S2 S3 DNS NTP"
+        tcp dport 53 accept
+
+        # S1, S6 — mises à jour de la distribution et renouvellement de certificat.
+        tcp dport { 80, 443 } accept comment "S1 S6 maj et ACME"
+
+        # S4, S5 — messagerie : notifications sortantes et collecteur de tickets.
+        tcp dport { 587, 993 } accept comment "S4 S5 SMTP IMAP"
+
+        # S7 — prise en main à distance du poste client, par le tunnel.
+        oifname $VPN_IF ip daddr $VPN_NET tcp dport 5900 accept comment "S7 VNC"
+
+        # Réponses du tunnel lui-même.
+        udp sport $VPN_PORT accept
+
+        # ICMP sortant limité.
+        ip protocol icmp limit rate 5/second accept
+
+        limit rate 5/minute log prefix "[nft-drop-out] " level warn
+        counter
+    }
+}

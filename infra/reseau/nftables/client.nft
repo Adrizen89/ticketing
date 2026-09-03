@@ -1,0 +1,41 @@
+#!/usr/sbin/nft -f
+# =============================================================================
+# Pare-feu du poste client — issue #18
+# -----------------------------------------------------------------------------
+# Le client n'expose qu'un seul service, et uniquement au serveur, par le tunnel :
+# l'outil de contrôle à distance (issue #25).
+# =============================================================================
+
+flush ruleset
+
+define VPN_IF  = "tun0"
+define VPN_SRV = @VPN_SRV_IP@
+
+table inet filter {
+    chain input {
+        type filter hook input priority filter; policy drop;
+
+        ct state established,related accept
+        ct state invalid drop
+        iif lo accept
+
+        ip protocol icmp icmp type { echo-request, destination-unreachable, time-exceeded } limit rate 5/second accept
+
+        # E6 — prise en main à distance, depuis le serveur et par le tunnel seul.
+        iifname $VPN_IF ip saddr $VPN_SRV tcp dport 5900 accept comment "E6 VNC"
+
+        limit rate 5/minute log prefix "[nft-drop-in] " level warn
+        counter
+    }
+
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+    }
+
+    chain output {
+        type filter hook output priority filter; policy accept;
+        # Politique sortante permissive assumée sur le poste client : c'est un
+        # poste utilisateur, pas un serveur. Le cloisonnement repose sur le
+        # pare-feu du serveur, qui est la cible à protéger.
+    }
+}
